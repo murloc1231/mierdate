@@ -53,8 +53,10 @@ class SQLiteDatabase:
 
 
 if __name__ == '__main__':
+    import json
+
     create_users_query = '''
-    CREATE TABLE users (
+    CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
         tg_username TEXT,
         name TEXT,
@@ -67,7 +69,7 @@ if __name__ == '__main__':
     '''
 
     create_likes_query = '''
-    CREATE TABLE likes (
+    CREATE TABLE IF NOT EXISTS likes (
         id INTEGER PRIMARY KEY,
         liker INTEGER,
         person INTEGER,
@@ -79,3 +81,25 @@ if __name__ == '__main__':
     with db.get_cursor() as cursor:
         cursor.execute(create_users_query)
         cursor.execute(create_likes_query)
+        cursor.connection.commit()
+        with open('./profiles/profiles.json', 'r', encoding='utf-8') as file:
+            profiles = json.load(file)
+            insert_profile_query = '''
+            INSERT INTO users(
+                tg_username, name, age, city,
+                gender, preferences, description
+            )
+            VALUES ('test', ?, ?, ?, ?, ?, ?)
+            '''
+            for profile in profiles:
+                cursor.execute(
+                    insert_profile_query,
+                    [
+                        profile['name'],
+                        profile['age'],
+                        profile['city'],
+                        profile['gender'],
+                        profile['preferences'],
+                        profile['description'],
+                    ],
+                )
