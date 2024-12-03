@@ -9,3 +9,8 @@ class YourInfoState(StatesGroup):
     name = State()
     description = State()
     photo = State()
+    confirmation = State()
+
+
+class SearchState(StatesGroup):
+    search = State()
