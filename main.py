@@ -10,9 +10,11 @@ from telebot.types import (
 from database.database import SQLiteDatabase
 from states import SearchState, YourInfoState
 import json
+import settings
+from gensim.models.doc2vec import Doc2Vec
 
 
-class Profile(TypedDict):
+class ProfileInfo(TypedDict):
     name: str
     city: str
     gender: str
@@ -20,13 +22,21 @@ class Profile(TypedDict):
     description: str
 
 
+class FullProfile(ProfileInfo):
+    id: int
+    chat_id: int
+    photo: str
+    preferences: str
+
+
 state_storage = StateMemoryStorage()
 bot = TeleBot(
     token='7564254378:AAG9PPGvZ50KtGYaD1gX2hyvociCJh7m-ZI', state_storage=state_storage
 )
 bot.add_custom_filter(custom_filters.StateFilter(bot))
-db = SQLiteDatabase('./database/database.sqlite', pool_size=10)
-with open('./profiles/origin_data.json', 'r', encoding='utf-8') as file:
+db = SQLiteDatabase(settings.DB_PATH, pool_size=10)
+model = Doc2Vec.load(settings.MODEL_PATH)
+with open(settings.PROFILES_PATH, 'r', encoding='utf-8') as file:
     cities: list[str] = json.load(file)['cities']
 
 
@@ -35,12 +45,12 @@ def start(message: Message):
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 
     with db.get_cursor() as cursor:
-        username = cursor.execute(
-            'SELECT id FROM users WHERE users.tg_username = ?',
-            [message.from_user.username],
+        user_id = cursor.execute(
+            'SELECT id FROM users WHERE users.id = ?',
+            [message.from_user.id],
         ).fetchone()
 
-    if not username:
+    if not user_id:
         keyboard.add(KeyboardButton(text='Создать анкету'))
 
     bot.send_message(
@@ -197,7 +207,7 @@ def save_photo(message: Message):
         downloaded_file = bot.download_file(file_info.file_path)
         filename = f'{message.from_user.id}.jpg'
         save_photo_on_disk(downloaded_file, filename)
-        data['filename'] = filename
+        data['photo'] = filename
 
         keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add('Да', 'Нет')
@@ -226,6 +236,13 @@ def profile_confirmation(message: Message):
         return bot.send_message(message.chat.id, 'Неверное значение')
 
     if message.text == 'Да':
+        with bot.retrieve_data(
+            user_id=message.from_user.id, chat_id=message.chat.id
+        ) as data:
+            data['id'] = message.from_user.id
+            data['chat_id'] = message.chat.id
+            save_profile(data)
+
         bot.set_state(
             user_id=message.from_user.id,
             chat_id=message.chat.id,
@@ -242,7 +259,31 @@ def profile_confirmation(message: Message):
         )
 
 
-def build_profile_text(profile: Profile):
+def save_profile(profile: FullProfile):
+    with db.get_cursor() as cursor:
+        save_profile_query = '''
+        INSERT INTO users(
+            id, chat_id, name, age, city,
+            gender, preferences, description
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        '''
+        cursor.execute(
+            save_profile_query,
+            [
+                profile['id'],
+                profile['chat_id'],
+                profile['name'],
+                profile['age'],
+                profile['city'],
+                profile['gender'],
+                profile['preferences'],
+                profile['description'],
+            ],
+        )
+
+
+def build_profile_text(profile: ProfileInfo):
     profile_text = f"{profile['name']}, {profile['age']}, {profile['city']}\n"
     profile_text += f"{profile['description']}"
     return profile_text

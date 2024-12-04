@@ -41,6 +41,8 @@ class SQLiteDatabase:
         cursor = connection.cursor()
         try:
             yield cursor
+        except Exception as e:
+            raise e
         finally:
             connection.commit()
             cursor.close()
@@ -58,7 +60,7 @@ if __name__ == '__main__':
     create_users_query = '''
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
-        tg_username TEXT,
+        chat_id INTEGER,
         name TEXT,
         age INTEGER,
         city TEXT,
@@ -86,10 +88,10 @@ if __name__ == '__main__':
             profiles = json.load(file)
             insert_profile_query = '''
             INSERT INTO users(
-                tg_username, name, age, city,
+                chat_id, name, age, city,
                 gender, preferences, description
             )
-            VALUES ('test', ?, ?, ?, ?, ?, ?)
+            VALUES (1, ?, ?, ?, ?, ?, ?)
             '''
             for profile in profiles:
                 cursor.execute(
