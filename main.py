@@ -4,12 +4,12 @@ from telebot.storage import StateMemoryStorage
 from telebot.types import (
     Message,
     ReplyKeyboardMarkup,
-    KeyboardButton,
     ReplyKeyboardRemove,
 )
 from database.database import SQLiteDatabase
 from states import SearchState, YourInfoState
 import json
+import pickle
 import settings
 from gensim.models.doc2vec import Doc2Vec
 
@@ -35,9 +35,13 @@ bot = TeleBot(
 )
 bot.add_custom_filter(custom_filters.StateFilter(bot))
 db = SQLiteDatabase(settings.DB_PATH, pool_size=10)
-model = Doc2Vec.load(settings.MODEL_PATH)
+model: Doc2Vec = Doc2Vec.load(settings.MODEL_PATH)
 with open(settings.PROFILES_PATH, 'r', encoding='utf-8') as file:
     cities: list[str] = json.load(file)['cities']
+with open(settings.VECTORS_PROFILES_PATH, 'br') as file:
+    vectors_profiles = pickle.load(file)
+with open(settings.PROFILES_VECTORS_PATH, 'br') as file:
+    profiles_vectors = pickle.load(file)
 
 
 @bot.message_handler(commands=['start'])
@@ -51,7 +55,9 @@ def start(message: Message):
         ).fetchone()
 
     if not user_id:
-        keyboard.add(KeyboardButton(text='Создать анкету'))
+        keyboard.add('Создать анкету')
+    else:
+        keyboard.add('Поиск')
 
     bot.send_message(
         message.chat.id,
@@ -263,8 +269,8 @@ def save_profile(profile: FullProfile):
     with db.get_cursor() as cursor:
         save_profile_query = '''
         INSERT INTO users(
-            id, chat_id, name, age, city,
-            gender, preferences, description
+            id, name, age, city, gender,
+            preferences, description
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         '''
@@ -289,6 +295,50 @@ def build_profile_text(profile: ProfileInfo):
     return profile_text
 
 
+def build_search_keyboard():
+    keyboard = ReplyKeyboardMarkup()
+    keyboard.add('❤️', '💔', '💤')
+    return keyboard
+
+
+def get_next_profile(user_id):
+    with db.get_cursor() as cursor:
+        current_profile_idx = cursor.execute(
+            'SELECT current_profile_idx FROM users WHERE users.id = ?', user_id
+        ).fetchone()
+    model.dv.most_similar(profiles_vectors[user_id])
+
+
+def send_profile(message: Message, profile: FullProfile):
+    profile_text = build_profile_text(profile)
+    bot.send_photo(
+        message.chat.id, caption=profile_text, reply_markup=build_search_keyboard()
+    )
+
+
+def like_profile():
+    pass
+
+
+def dislike_profile():
+    pass
+
+
+@bot.message_handler(state=SearchState.search)
+def search(message: Message):
+    if message.text not in ('❤️', '💔', '💤'):
+        return
+
+    if message.text == '❤️':
+        next_profile = like_profile()
+    elif message.text == '💔':
+        next_profile = dislike_profile()
+    else:
+        pass
+
+    send_profile(message=message, profile=next_profile)
+
+
 @bot.message_handler(content_types='text')
 def message_reply(message: Message):
     if message.text in ['Создать анкету', 'Заполнить анкету заново']:
@@ -301,6 +351,13 @@ def message_reply(message: Message):
             message.chat.id,
             'Введите имя',
             reply_markup=ReplyKeyboardRemove(),
+        )
+    elif message.text == 'Поиск':
+        send_profile()
+        bot.set_state(
+            user_id=message.from_user.id,
+            chat_id=message.chat.id,
+            state=SearchState.search,
         )
 
 

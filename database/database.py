@@ -60,13 +60,14 @@ if __name__ == '__main__':
     create_users_query = '''
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
-        chat_id INTEGER,
         name TEXT,
         age INTEGER,
         city TEXT,
         gender TEXT,
         preferences TEXT,
-        description TEXT
+        description TEXT,
+        active INTEGER CHECK(active in (0, 1)) DEFAULT 1,
+        current_profile_idx INTEGER DEFAULT 0
     )
     '''
 
@@ -88,10 +89,10 @@ if __name__ == '__main__':
             profiles = json.load(file)
             insert_profile_query = '''
             INSERT INTO users(
-                chat_id, name, age, city,
-                gender, preferences, description
+                name, age, city, gender,
+                preferences, description
             )
-            VALUES (1, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             '''
             for profile in profiles:
                 cursor.execute(
